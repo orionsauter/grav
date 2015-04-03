@@ -1,7 +1,11 @@
+import matplotlib
+# Force matplotlib to not use any Xwindows backend.
+matplotlib.use('Agg')
 import sys
 import re
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 
 def getInjections():
     f = open('injection_list.txt')
@@ -51,8 +55,8 @@ if __name__ == "__main__":
     segments = getOutputSegs(dag)
     inject = getInjections()
     patt = re.compile('_all')
-    dets = np.array([])
-    rats = np.array([])
+    dets = []
+    rats = []
     for injName in inject.keys():
         injInfo = inject[injName]
         freqlo = float(injInfo[19])
@@ -64,12 +68,19 @@ if __name__ == "__main__":
         for seg in segList:
             data = getData('./output/'+seg)
             for line in data:
-                if (len(line) > 20 and line[1] == 'ul'):
-                    np.append(rats,injInfo[10]/float(line[14]))
+                if (len(line) > 20 and line[1] == 'ul' and float(line[14]) > 0):
+                    rats.append(injInfo[10]/float(line[14]))
                     if (patt.search(line[5]) and float(line[13]) > 7 and
                         abs(float(line[7]) - injInfo[6]) < 0.002):
-                        np.append(dets,1)
+                        dets.append(1)
                     else:
-                        np.append(dets,0)
+                        dets.append(0)
     norm, xbins = np.histogram(rats)
-    
+    nbins = xbins.size - 1
+    detmap = np.digitize(rats,xbins)
+    dets = np.array(dets)
+    percent = np.zeros(nbins)
+    for i in range(nbins): 
+        percent[i] = np.sum(dets[detmap == i])*100.0/norm[i]
+    plt.plot(xbins[0:nbins],percent,'o')
+    plt.savefig('detection.png',bbox_inches='tight')
