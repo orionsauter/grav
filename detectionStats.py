@@ -54,13 +54,11 @@ def getData(direc):
             f.close()
     return data
 
-if __name__ == "__main__":
-    dag = sys.argv[1]
-    segments = getOutputSegs(dag)
-    inject = getInjections()
+def getDetections(segments,inject):
     patt = re.compile('_all')
-    dets = np.zeros_like(inject.keys(),dtype=float)
-    rats = np.zeros_like(inject.keys(),dtype=float)
+    ninjects = len(inject.keys())
+    dets = np.zeros(ninjects)
+    rats = np.zeros(ninjects)
     i = -1
     
     # For each injection, gather output within frequency range
@@ -88,7 +86,9 @@ if __name__ == "__main__":
                     if (patt.search(line[5]) and float(line[13]) > 7 and
                         abs(float(line[7]) - injInfo[6]) < 0.002):
                         dets[i] = 1
-                        
+    return [dets,rats]
+
+def makePlot(dets,rats):
     # Evenly distribute h0/ul values into bins
     xbins = stats.mstats.mquantiles(rats,np.arange(11)*0.1)
     nbins = xbins.size - 1
@@ -104,3 +104,47 @@ if __name__ == "__main__":
     plt.xlabel('h0/ul')
     plt.ylabel('Percent Detected')
     plt.savefig('detection.png',bbox_inches='tight')
+
+def diffHistos(segments,inject):
+    patt = re.compile('_all')
+    dets = np.array([])
+    deltaRA = np.array([])
+    deltaDec = np.array([])
+    deltaSD = np.array([])
+    for freq in segments.keys():
+        print freq
+        data = getData('./output/'+segments[freq])
+        for injName in inject.keys():
+            injInfo = inject[injName]
+            for line in data:
+                # Look for UL lines with nonzero ul
+                if (len(line) > 20 and line[1] == 'ul' and float(line[14]) > 0):
+                    deltaRA = np.append(deltaRA,[abs(injInfo[0] - float(line[9]))])
+                    deltaDec = np.append(deltaDec,[abs(injInfo[1] - float(line[10]))])
+                    deltaSD = np.append(deltaSD,[abs(injInfo[7] - float(line[8]))])
+                    # Detection if SNR > 7 and freq within 0.002
+                    if (patt.search(line[5]) and float(line[13]) > 7 and
+                        abs(float(line[7]) - injInfo[6]) < 0.002):
+                        np.append(dets,[1])
+                    else:
+                        np.append(dets,[0])
+    plt.hist(deltaRA)
+    plt.savefig('RAAllHist.png',bbox_inches='tight')
+    plt.hist(deltaDec)
+    plt.savefig('DecAllHist.png',bbox_inches='tight')
+    plt.hist(deltaSD)
+    plt.savefig('SDAllHist.png',bbox_inches='tight')
+    plt.hist(deltaRA[det==1])
+    plt.savefig('RADetHist.png',bbox_inches='tight')
+    plt.hist(deltaDec[det==1])
+    plt.savefig('DecDetHist.png',bbox_inches='tight')
+    plt.hist(deltaSD[det==1])
+    plt.savefig('SDDetHist.png',bbox_inches='tight')
+
+if __name__ == "__main__":
+    dag = sys.argv[1]
+    segments = getOutputSegs(dag)
+    inject = getInjections()
+    #detect = getDetections(segments,inject)
+    #makePlot(detect[0],detect[1])
+    diffHistos(segments,inject)
