@@ -50,7 +50,9 @@ def getData(direc):
             f = open(os.path.join(root,name))
             for line in f:
                 line.rstrip()
-                data = data + list([line.split(' ')])
+                cols = line.split(' ')
+                if (len(cols) > 20 and cols[1] == 'ul' and float(cols[14]) > 0):
+                    data = data + list([cols])
             f.close()
     return data
 
@@ -107,39 +109,42 @@ def makePlot(dets,rats):
 
 def diffHistos(segments,inject):
     patt = re.compile('_all')
-    dets = np.array([])
-    deltaRA = np.array([])
-    deltaDec = np.array([])
-    deltaSD = np.array([])
+    dets = list([])
+    deltaRA = list([])
+    deltaDec = list([])
+    deltaSD = list([])
     for freq in segments.keys():
         print freq
         data = getData('./output/'+segments[freq])
         for injName in inject.keys():
             injInfo = inject[injName]
+            if (abs(freq - injInfo[6]) > 2.0):
+                continue
             for line in data:
                 # Look for UL lines with nonzero ul
                 if (len(line) > 20 and line[1] == 'ul' and float(line[14]) > 0):
-                    deltaRA = np.append(deltaRA,[abs(injInfo[0] - float(line[9]))])
-                    deltaDec = np.append(deltaDec,[abs(injInfo[1] - float(line[10]))])
-                    deltaSD = np.append(deltaSD,[abs(injInfo[7] - float(line[8]))])
+                    deltaRA = deltaRA + list([(injInfo[0] - float(line[9]))])
+                    deltaDec = deltaDec + list([(injInfo[1] - float(line[10]))])
+                    deltaSD = deltaSD + list([(injInfo[7] - float(line[8]))])
                     # Detection if SNR > 7 and freq within 0.002
                     if (patt.search(line[5]) and float(line[13]) > 7 and
                         abs(float(line[7]) - injInfo[6]) < 0.002):
-                        np.append(dets,[1])
+                        dets = dets + list([1])
                     else:
-                        np.append(dets,[0])
-    plt.hist(deltaRA)
-    plt.savefig('RAAllHist.png',bbox_inches='tight')
-    plt.hist(deltaDec)
-    plt.savefig('DecAllHist.png',bbox_inches='tight')
-    plt.hist(deltaSD)
-    plt.savefig('SDAllHist.png',bbox_inches='tight')
-    plt.hist(deltaRA[det==1])
+                        dets = dets + list([0])
+    plt.clf()
+    plt.hist([deltaRA[i] for i in range(len(dets)) if (dets[i] == 1)],np.arange(-0.25,0.25,0.025))
+    plt.title('Difference in Right Ascension (rad)')
     plt.savefig('RADetHist.png',bbox_inches='tight')
-    plt.hist(deltaDec[det==1])
+    plt.clf()
+    plt.hist([deltaDec[i] for i in range(len(dets)) if (dets[i] == 1)],np.arange(-0.25,0.25,0.025))
+    plt.title('Difference in Declination (rad)')
     plt.savefig('DecDetHist.png',bbox_inches='tight')
-    plt.hist(deltaSD[det==1])
+    plt.clf()
+    plt.hist([deltaSD[i] for i in range(len(dets)) if (dets[i] == 1)])
+    plt.title('Difference in Spindown')
     plt.savefig('SDDetHist.png',bbox_inches='tight')
+    plt.clf()
 
 if __name__ == "__main__":
     dag = sys.argv[1]
