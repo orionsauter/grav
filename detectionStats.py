@@ -8,6 +8,32 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 
+epsilon = 23.439281 * np.pi/180
+eclipticPole = [0, -np.sin(epsilon), np.cos(epsilon)]
+
+def eclipticDist(ra1, dec1, ra2, dec2):
+    x = np.cos(ra1) * np.cos(dec1) - np.cos(ra2) * np.cos(dec2)
+    y = np.sin(ra1) * np.cos(dec1) - np.sin(ra2) * np.cos(dec2)
+    z = np.sin(dec1) - np.sin(dec2)
+
+    a = x * eclipticPole[0] + y * eclipticPole[1] + z * eclipticPole[2]
+
+    return np.sqrt(np.power(x-a*eclipticPole[0],2) +
+                   np.power(y-a*eclipticPole[1],2) +
+                   np.power(z-a*eclipticPole[2],2))
+
+def cosSphericalDist(ra1,dec1,ra2,dec2):
+    return np.sin(dec1)*np.sin(dec2)+np.cos(dec1)*np.cos(dec2)*np.cos(ra1-ra2)
+
+def sphericalDist(ra1,dec1,ra2,dec2):
+    a = cosSphericalDist(ra1,dec1,ra2,dec2)
+    if (a >= 1.0):
+        return 0.0
+    elif (a <= -1.0):
+        return np.pi
+    else:
+        return np.arccos(a)
+
 # Read table of injected signals
 def getInjections():
     f = open('injection_list.txt')
@@ -110,8 +136,8 @@ def makePlot(dets,rats):
 def diffHistos(segments,inject):
     patt = re.compile('_all')
     dets = list([])
-    deltaRA = list([])
-    deltaDec = list([])
+    deltaSph = list([])
+    deltaEcl = list([])
     deltaSD = list([])
     for freq in segments.keys():
         print freq
@@ -123,8 +149,8 @@ def diffHistos(segments,inject):
             for line in data:
                 # Look for UL lines with nonzero ul
                 if (len(line) > 20 and line[1] == 'ul' and float(line[14]) > 0):
-                    deltaRA = deltaRA + list([(injInfo[0] - float(line[9]))])
-                    deltaDec = deltaDec + list([(injInfo[1] - float(line[10]))])
+                    deltaSph = deltaSph + list([sphericalDist(injInfo[0],injInfo[1],float(line[9]),float(line[10]))*float(line[7])])
+                    deltaEcl = deltaEcl + list([eclipticDist(injInfo[0],injInfo[1],float(line[9]),float(line[10]))*float(line[7])])
                     deltaSD = deltaSD + list([(injInfo[7] - float(line[8]))])
                     # Detection if SNR > 7 and freq within 0.002
                     if (patt.search(line[5]) and float(line[13]) > 7 and
@@ -133,15 +159,15 @@ def diffHistos(segments,inject):
                     else:
                         dets = dets + list([0])
     plt.clf()
-    plt.hist([deltaRA[i] for i in range(len(dets)) if (dets[i] == 1)],np.arange(-0.25,0.25,0.025))
-    plt.title('Difference in Right Ascension (rad)')
-    plt.savefig('RADetHist.png',bbox_inches='tight')
+    plt.hist([deltaSph[i] for i in range(len(dets)) if (dets[i] == 1)],bins=25)
+    plt.title('Difference in Spherical Distance')
+    plt.savefig('SphDetHist.png',bbox_inches='tight')
     plt.clf()
-    plt.hist([deltaDec[i] for i in range(len(dets)) if (dets[i] == 1)],np.arange(-0.25,0.25,0.025))
-    plt.title('Difference in Declination (rad)')
-    plt.savefig('DecDetHist.png',bbox_inches='tight')
+    plt.hist([deltaEcl[i] for i in range(len(dets)) if (dets[i] == 1)],bins=25)
+    plt.title('Difference in Ecliptic Distance')
+    plt.savefig('EclDetHist.png',bbox_inches='tight')
     plt.clf()
-    plt.hist([deltaSD[i] for i in range(len(dets)) if (dets[i] == 1)])
+    plt.hist([deltaSD[i] for i in range(len(dets)) if (dets[i] == 1)],bins=25)
     plt.title('Difference in Spindown')
     plt.savefig('SDDetHist.png',bbox_inches='tight')
     plt.clf()
