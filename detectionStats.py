@@ -39,13 +39,15 @@ def getInjections():
     f = open('injection_list.txt')
     inject = dict()
     skip = 1
+    i = 1
     for line in f:
         # Skip header
         if (skip):
             skip = 0
             continue
         vals = line.split()
-        inject[vals[0]] = map(float,vals[3:])
+        inject[i] = map(float,vals[3:])
+        i = i + 1
     f.close()
     return inject
 
@@ -83,7 +85,8 @@ def getData(direc):
     return data
 
 def getDetections(segments,inject):
-    patt = re.compile('_all')
+    allpatt = re.compile('_all')
+    segpatt = re.compile('A(\d+)_\d+')
     ninjects = len(inject.keys())
     dets = np.zeros(ninjects)
     rats = np.zeros(ninjects)
@@ -93,11 +96,10 @@ def getDetections(segments,inject):
     for injName in inject.keys():
         i = i + 1
         injInfo = inject[injName]
-        freqlo = float(injInfo[19])
-        freqhi = float(injInfo[20])
         segList = list([])
         for freq in segments.keys():
-            if (freq <= freqhi and freq >= freqlo):
+            m = segpatt.search(segments[freq])
+            if (m and float(m.group(1)) == injName):
                 segList = segList + list([segments[freq]])
         maxSNR = 0
         for seg in segList:
@@ -111,7 +113,7 @@ def getDetections(segments,inject):
                     rats[i] = ratio
                     maxSNR = float(line[13])
                     # Detection if SNR > 7 and freq within 0.002
-                    if (patt.search(line[5]) and float(line[13]) > 7 and
+                    if (allpatt.search(line[5]) and float(line[13]) > 7 and
                         abs(float(line[7]) - injInfo[6]) < 0.002):
                         dets[i] = 1
     return [dets,rats]
@@ -133,44 +135,66 @@ def makePlot(dets,rats):
     plt.ylabel('Percent Detected')
     plt.savefig('detection.png',bbox_inches='tight')
 
-def diffHistos(segments,inject):
-    patt = re.compile('_all')
+def diffHistos(inject):
+    allpatt = re.compile('_all')
+    segpatt = re.compile('A(\d+)_\d+')
     dets = list([])
     deltaSph = list([])
     deltaEcl = list([])
     deltaSD = list([])
-    for freq in segments.keys():
-        print freq
-        data = getData('./output/'+segments[freq])
-        for injName in inject.keys():
-            injInfo = inject[injName]
-            if (abs(freq - injInfo[6]) > 2.0):
-                continue
-            for line in data:
-                # Look for UL lines with nonzero ul
-                if (len(line) > 20 and line[1] == 'ul' and float(line[14]) > 0):
-                    deltaSph = deltaSph + list([sphericalDist(injInfo[0],injInfo[1],float(line[9]),float(line[10]))*float(line[7])])
-                    deltaEcl = deltaEcl + list([eclipticDist(injInfo[0],injInfo[1],float(line[9]),float(line[10]))*float(line[7])])
-                    deltaSD = deltaSD + list([(injInfo[7] - float(line[8]))])
-                    # Detection if SNR > 7 and freq within 0.002
-                    if (patt.search(line[5]) and float(line[13]) > 7 and
-                        abs(float(line[7]) - injInfo[6]) < 0.002):
-                        dets = dets + list([1])
-                    else:
-                        dets = dets + list([0])
+    for injName in inject.keys():
+        seg = 'A'+str(injName)+'_2'
+        data = getData('./output/'+seg)
+        injInfo = inject[injName]
+        maxSNR = 0
+        sph = 0
+        ecl = 0
+        sd = 0
+        det = 0
+        for line in data:
+            # Look for UL lines with nonzero ul
+            if (len(line) > 20 and line[1] == 'ul' and
+                float(line[14]) > 0 and float(line[13]) > maxSNR):
+                maxSNR = float(line[13])
+                sph = sphericalDist(injInfo[0],injInfo[1],float(line[9]),float(line[10]))*float(line[7])
+                ecl = eclipticDist(injInfo[0],injInfo[1],float(line[9]),float(line[10]))*float(line[7])
+                sd = (injInfo[7] - float(line[8]))
+                # Detection if SNR > 7 and freq within 0.002
+                if (allpatt.search(line[5]) and float(line[13]) > 7 and
+                    abs(float(line[7]) - injInfo[6]) < 0.002):
+                    det = 1
+                else:
+                    det = 0
+        deltaSph = deltaSph + list([sph])
+        deltaEcl = deltaEcl + list([ecl])
+        deltaSD = deltaSD + list([sd])
+        dets = dets + list([det])
     plt.clf()
-    plt.hist([deltaSph[i] for i in range(len(dets)) if (dets[i] == 1)],bins=25)
-    plt.title('Difference in Spherical Distance')
+    n, bins, patches = plt.hist(deltaSph,bins=25)
+    plt.title('Difference in Spherical Distance (All)')
+    plt.savefig('SphAllHist.png',bbox_inches='tight')
+    plt.clf()
+    plt.hist([deltaSph[i] for i in range(len(dets)) if (dets[i] == 1)],bins=bins)
+    plt.title('Difference in Spherical Distance (Detected)')
     plt.savefig('SphDetHist.png',bbox_inches='tight')
+    
     plt.clf()
-    plt.hist([deltaEcl[i] for i in range(len(dets)) if (dets[i] == 1)],bins=25)
-    plt.title('Difference in Ecliptic Distance')
+    n, bins, patches = plt.hist(deltaEcl,bins=25)
+    plt.title('Difference in Ecliptic Distance (All)')
+    plt.savefig('EclAllHist.png',bbox_inches='tight')
+    plt.clf()
+    plt.hist([deltaEcl[i] for i in range(len(dets)) if (dets[i] == 1)],bins=bins)
+    plt.title('Difference in Ecliptic Distance (Detected)')
     plt.savefig('EclDetHist.png',bbox_inches='tight')
+    
     plt.clf()
-    plt.hist([deltaSD[i] for i in range(len(dets)) if (dets[i] == 1)],bins=25)
-    plt.title('Difference in Spindown')
+    n, bins, patches = plt.hist(deltaSD,bins=25)
+    plt.title('Difference in Spindown (All)')
+    plt.savefig('SDAllHist.png',bbox_inches='tight')
+    plt.clf()
+    plt.hist([deltaSD[i] for i in range(len(dets)) if (dets[i] == 1)],bins=bins)
+    plt.title('Difference in Spindown (Detected)')
     plt.savefig('SDDetHist.png',bbox_inches='tight')
-    plt.clf()
 
 if __name__ == "__main__":
     dag = sys.argv[1]
@@ -178,4 +202,4 @@ if __name__ == "__main__":
     inject = getInjections()
     #detect = getDetections(segments,inject)
     #makePlot(detect[0],detect[1])
-    diffHistos(segments,inject)
+    diffHistos(inject)
