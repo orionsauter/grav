@@ -45,20 +45,19 @@ png(p(output.dir, "/timing.png"), width=600, height=600, res=100)
 print(xyplot(Hours~Band, Cputime))
 dev.off()
 
-try({
 CompletedInstances<- sort(as.integer(as.character(gsub(".*output/([^/]*)(/.*)?/powerflux.log.*", "\\1", Cputime[,"tag"])))) 
-cat(file=LOG, "Last instance completed:", max(CompletedInstances), "\n")
-cat(file=LOG, "Found", length(RunningInstances), "running instances\n")
-cat(file=LOG, "Found", length(VetoedInstances), "vetoed instances\n")
-IncompleteInstances<-sort(setdiff(1:max(CompletedInstances), CompletedInstances))
-cat(file=LOG, "Found", length(IncompleteInstances), "incomplete instances:", p(IncompleteInstances, collapse=" "), "\n")
-MissingInstances<-sort(setdiff(1:max(CompletedInstances), c(CompletedInstances, RunningInstances, VetoedInstances)))
-cat(file=LOG, "Found", length(MissingInstances), "missing instances:", p(MissingInstances, collapse=" "), "\n")
+#cat(file=LOG, "Last instance completed:", max(CompletedInstances), "\n")
+#cat(file=LOG, "Found", length(RunningInstances), "running instances\n")
+#cat(file=LOG, "Found", length(VetoedInstances), "vetoed instances\n")
+#IncompleteInstances<-sort(setdiff(1:max(CompletedInstances), CompletedInstances))
+#cat(file=LOG, "Found", length(IncompleteInstances), "incomplete instances:", p(IncompleteInstances, collapse=" "), "\n")
+#MissingInstances<-sort(setdiff(1:max(CompletedInstances), c(CompletedInstances, RunningInstances, VetoedInstances)))
+#cat(file=LOG, "Found", length(MissingInstances), "missing instances:", p(MissingInstances, collapse=" "), "\n")
 
-cat(file=LOG, "-------------------- missing.dag ----------------------\n")
-cat(file=LOG, p("JOB A", MissingInstances, " condor\nVARS A", MissingInstances, " PID=\"", MissingInstances, "\"\n", collapse=""))
-cat(file=LOG, "-------------------------------------------------------\n")
-})
+#cat(file=LOG, "-------------------- missing.dag ----------------------\n")
+#cat(file=LOG, p("JOB A", MissingInstances, " condor\nVARS A", MissingInstances, " PID=\"", MissingInstances, "\"\n", collapse=""))
+#cat(file=LOG, "-------------------------------------------------------\n")
+
 
 #runtime<-function(band)(0.5+1.5*(band/100)^2)
 # 675144 hours for single spindown (neglecting startup costs)
@@ -75,6 +74,10 @@ UpperLimits_LLO<-dbGetQuery(con, p("SELECT first_bin, skyband_name, kind, MAX(ul
 UpperLimits<-merge(UpperLimits_all, UpperLimits_LHO, by=c("first_bin", "skyband_name", "kind"), suffixes=c("", "_LHO"), all=TRUE)
 UpperLimits<-merge(UpperLimits, UpperLimits_LLO, by=c("first_bin", "skyband_name", "kind"), suffixes=c("_all", "_LLO"), all=TRUE)
 
+# In SQL MAX() of no entries reports 0. Patch up !
+UpperLimits[,"ul_all"]<-ifelse(UpperLimits[,"ul_all"]<=0.0, NA, UpperLimits[,"ul_all"])
+UpperLimits[,"ul_LHO"]<-ifelse(UpperLimits[,"ul_LHO"]<=0.0, NA, UpperLimits[,"ul_LHO"])
+UpperLimits[,"ul_LLO"]<-ifelse(UpperLimits[,"ul_LLO"]<=0.0, NA, UpperLimits[,"ul_LLO"])
 if(!universal_statistics) {
 	UpperLimits[,"NonGaussian_all"]<-(UpperLimits[,"max_m1_neg_all"]>0.44 | UpperLimits[,"min_m4_all"]<1.95)
 	UpperLimits[,"NonGaussian_LHO"]<-(UpperLimits[,"max_m1_neg_LHO"]>0.44 | UpperLimits[,"min_m4_LHO"]<1.95)
@@ -84,12 +87,6 @@ if(!universal_statistics) {
 	UpperLimits[,"NonGaussian_LHO"]<-FALSE
 	UpperLimits[,"NonGaussian_LLO"]<-FALSE
 	}
-
-# In SQL MAX() of no entries reports 0. Patch up !
-UpperLimits[,"ul_all"]<-ifelse(UpperLimits[,"ul_all"]<=0.0, NA, UpperLimits[,"ul_all"])
-UpperLimits[,"ul_LHO"]<-ifelse(UpperLimits[,"ul_LHO"]<=0.0, NA, UpperLimits[,"ul_LHO"])
-UpperLimits[,"ul_LLO"]<-ifelse(UpperLimits[,"ul_LLO"]<=0.0, NA, UpperLimits[,"ul_LLO"])
-
 
 Contaminated<-UpperLimits[,"NonGaussian_all"] & UpperLimits[,"NonGaussian_LLO"] & UpperLimits[,"NonGaussian_LHO"]
 
@@ -113,7 +110,7 @@ if(sum(F)>1) {
 	cat(file=LOG, "Found", sum(F), "bands without an upper limit (bins):", p(sort(unique(UpperLimits[F, "first_bin"])), collapse=" "), "\n")
 	cat(file=LOG, "Found", sum(F), "bands without an upper limit (freq):", p(sort(unique(UpperLimits[F, "band"])), collapse=" "), "\n")
 	}
-
+print("Writing Upper Limits")
 write.table(UpperLimits, p(output.dir, "/upper_limits.csv"), row.names=FALSE, col.names=TRUE, sep="\t")
 
 ul_plot<-function(data_orig, title="UL", correction=ULfactor, ...) {
@@ -141,7 +138,7 @@ ul_plot(UpperLimits[UpperLimits[,"kind"]=="ul" & UpperLimits[,"skyband_name"]!="
 dev.off()
 
 png(p(output.dir, "/ul_allsky_125_200.png"), width=600, height=600, res=100)
-ul_plot(UpperLimits[UpperLimits[,"kind"]=="ul" & UpperLimits[,"skyband_name"]!="Lines",], title="All-sky upper limits", xlim=c(125, 200), ylim=c(-24, -22))
+ul_plot(UpperLimits[UpperLimits[,"kind"]=="ul" & UpperLimits[,"skyband_name"]!="Lines",], title="All-sky upper limits", xlim=c(125, 200), ylim=c(-25, -23))
 dev.off()
 
 #png(p(output.dir, "/ul_equator.png"), width=600, height=600, res=100)
@@ -217,7 +214,7 @@ dev.off()
 
 Data_ul<-dbGetQuery(con, p("SELECT first_bin, skyband_name, spindown, ul, masked_count FROM `", BandInfoTableName, "` WHERE  `set`='", Segment, "_all' AND kind='ul' AND skyband_name!='Lines'"))
 
-Data_ul[,"group"]<-BinData(Data_ul[,"ul"]/cos(pi/16), c(0, 5e-24+(0:10)*1e-24, 2e-23, 3e-23) )
+Data_ul[,"group"]<-BinData(Data_ul[,"ul"]/cos(pi/16), c(0, 9e-25, 1e-24, 2e-24, 3e-24, 4e-24, 5e-24, 1e-23, 2e-23, 3e-23) )
 Data_ul[,"frequency"]<-Data_ul[,"first_bin"]/1800.0
 
 png(p(output.dir, "/equator_ul_map.png"), width=600, height=600, res=100)
